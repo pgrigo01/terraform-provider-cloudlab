@@ -35,3 +35,4 @@ jobs:
         env:
           # GitHub automatically sets this secret token
           GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+          GPG_FINGERPRINT: ${{ secrets.GPG_FINGERPRINT }}

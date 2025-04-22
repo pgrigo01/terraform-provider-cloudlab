@@ -4,7 +4,7 @@ terraform {
   required_providers {
     cloudlab = {
       source  = "pgrigo01/cloudlab"
-      version = "1.0.1" 
+      version = "" 
     }
   }
 }
