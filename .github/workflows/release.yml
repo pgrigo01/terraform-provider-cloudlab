@@ -1,15 +1,11 @@
-# Terraform Provider release workflow.
 name: Release
 
-# This GitHub action creates a release when a tag that matches the pattern
-# "v*" (e.g. v0.1.0) is created.
 on:
+  # Trigger on any new tag that starts with "v" (e.g., v2.4.0).
   push:
     tags:
       - 'v*'
 
-# Releases need permissions to read and write the repository contents.
-# GitHub considers creating releases and uploading assets as writing contents.
 permissions:
   contents: write
 
@@ -17,25 +13,25 @@ jobs:
   goreleaser:
     runs-on: ubuntu-latest
     steps:
-      - uses: actions/checkout@b4ffde65f46336ab88eb53be808477a3936bae11 # v4.1.1
+      # 1. Check out the repo
+      - uses: actions/checkout@v3
         with:
-          # Allow goreleaser to access older tag information.
-          fetch-depth: 0
-      - uses: actions/setup-go@0c52d547c9bc32b1aa3301fd7a9cb496313a4491 # v5.0.0
+          # fetch-depth=0 so GoReleaser can read all tags/commits.
+          fetch-depth: 0  
+
+      # 2. Set up Go
+      - uses: actions/setup-go@v4
         with:
+          # This will look at your go.mod to pick the Go version, or you can hardcode e.g. "go-version: 1.20"
           go-version-file: 'go.mod'
           cache: true
-      - name: Import GPG key
-        uses: crazy-max/ghaction-import-gpg@01dd5d3ca463c7f10f7f4f7b4f177225ac661ee4 # v6.1.0
-        id: import_gpg
-        with:
-          gpg_private_key: ${{ secrets.GPG_PRIVATE_KEY }}
-          passphrase: ${{ secrets.PASSPHRASE }}
+
+      # 3. Run GoReleaser to build for multiple OS/arch and create a GitHub release
       - name: Run GoReleaser
-        uses: goreleaser/goreleaser-action@7ec5c2b0c6cdda6e8bbb49444bc797dd33d74dd8 # v5.0.0
+        uses: goreleaser/goreleaser-action@v5
         with:
+          # --clean ensures the dist/ folder is fresh each time
           args: release --clean
         env:
-          # GitHub sets the GITHUB_TOKEN secret automatically.
+          # GitHub automatically sets this secret token
           GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
-          GPG_FINGERPRINT: ${{ steps.import_gpg.outputs.fingerprint }}
