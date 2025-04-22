@@ -13,23 +13,29 @@ import (
 	"terraform-provider-cloudlab/internal/provider"
 )
 
-// Run "go generate" to format example terraform files and generate the docs for the registry/website
-
-// If you do not have terraform installed, you can remove the formatting command, but its suggested to
-// ensure the documentation is formatted properly.
+// Run "go generate" to format example Terraform files if Terraform is installed.
 //go:generate terraform fmt -recursive ./examples/
 
-// Run the docs generation tool, check its repository for more information on how it works and how docs
-// can be customized.
-//go:generate go run github.com/hashicorp/terraform-plugin-docs/cmd/tfplugindocs
+// Build the provider binary so tfplugindocs can read its schema.
+//go:generate go build -o terraform-provider-cloudlab
+
+// Generate docs using the older-style tfplugindocs flags.
+// (Your installed version does not support --dir or --provider.)
+//   -provider-dir=.           : Tells tfplugindocs to look for provider code in the current directory.
+//   -provider-name=cloudlab   : The logical name of your provider in Terraform configs.
+//   -rendered-provider-name=cloudlab : The name to display in generated docs.
+//
+// You can add other flags (e.g. -examples-dir, -rendered-website-dir) if desired.
+//
+// Note: If you need to pass a specific Terraform version or skip building the provider,
+// check the usage text you saw in the error to find the appropriate flags.
+//
+//go:generate go run github.com/hashicorp/terraform-plugin-docs/cmd/tfplugindocs -provider-dir=. -provider-name=cloudlab -rendered-provider-name=cloudlab
 
 var (
-	// these will be set by the goreleaser configuration
+	// These will be set by the goreleaser configuration
 	// to appropriate values for the compiled binary.
 	version string = "dev"
-
-	// goreleaser can pass other information to the main package, such as the specific commit
-	// https://goreleaser.com/cookbooks/using-main.version/
 )
 
 func main() {
@@ -49,7 +55,6 @@ func main() {
 	}
 
 	err := providerserver.Serve(context.Background(), provider.New(version), opts)
-
 	if err != nil {
 		log.Fatal(err.Error())
 	}

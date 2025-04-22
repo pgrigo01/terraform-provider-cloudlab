@@ -19,3 +19,31 @@
 
 # Go workspace file
 go.work
+
+cloudlab-decrypted.pem
+terraform.tfstate
+terraform.tfstate.backup
+
+terraform-provider-cloudlab
+
+cloudlab_experiments.csv
+cloudlab.pem
+
+managementNodeDuration.txt
+
+experiment_expire_times.csv
+
+myenv/
+venv/
+
+credentials.txt
+
+credentials.encrypted
+
+cloudlab-decrypted.pem.bak
+
+encryption_key.key
+
+.terraform.lock.hcl
+
+terraform-public-gpg.asc

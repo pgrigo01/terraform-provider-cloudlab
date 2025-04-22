@@ -3,46 +3,43 @@ package provider
 import (
 	"context"
 	"fmt"
+	"strings"
+
 	"github.com/hashicorp/terraform-plugin-framework-validators/stringvalidator"
 	"github.com/hashicorp/terraform-plugin-framework/resource"
 	"github.com/hashicorp/terraform-plugin-framework/resource/schema"
 	"github.com/hashicorp/terraform-plugin-framework/schema/validator"
 	"github.com/hashicorp/terraform-plugin-framework/types"
 	"github.com/hashicorp/terraform-plugin-log/tflog"
-	"strings"
 )
 
-// Ensure the implementation satisfies the expected interfaces.
 var (
 	_ resource.Resource = &cloudlabvmResource{}
 )
 
-// CloudLabExperimentResource is a helper function to simplify the provider implementation.
 func CloudLabExperimentResource() resource.Resource {
 	return &cloudlabvmResource{}
 }
 
-// cloudlabvmResource is the resource implementation.
 type cloudlabvmResource struct {
 	client Client
 }
 
-// Metadata returns the resource type name.
 func (r *cloudlabvmResource) Metadata(_ context.Context, req resource.MetadataRequest, resp *resource.MetadataResponse) {
-	resp.TypeName = "cloudlab_vm"
+	resp.TypeName = "cloudlab_simple_experiment"
 }
 
-// cloudlabvmResourceModel maps the resource schema data.
 type cloudlabvmModel struct {
-	Uuid        types.String        `tfsdk:"uuid"`
-	Name        types.String        `tfsdk:"name"`
-	Aggregate   types.String        `tfsdk:"aggregate"`
-	Image       types.String        `tfsdk:"image"`
-	Routable_ip types.Bool          `tfsdk:"routable_ip"`
-	Vlans       []cloudlabVlanModel `tfsdk:"vlans"`
+	Uuid             types.String        `tfsdk:"uuid"`
+	Name             types.String        `tfsdk:"name"`
+	Aggregate        types.String        `tfsdk:"aggregate"`
+	Image            types.String        `tfsdk:"image"`
+	Routable_ip      types.Bool          `tfsdk:"routable_ip"`
+	Extra_disk_space types.Int64         `tfsdk:"extra_disk_space"`
+	Node_count       types.Int64         `tfsdk:"node_count"`
+	Vlans            []cloudlabVlanModel `tfsdk:"vlans"`
 }
 
-// Schema defines the schema for the resource.
 func (r *cloudlabvmResource) Schema(_ context.Context, _ resource.SchemaRequest, resp *resource.SchemaResponse) {
 	resp.Schema = schema.Schema{
 		Attributes: map[string]schema.Attribute{
@@ -67,6 +64,14 @@ func (r *cloudlabvmResource) Schema(_ context.Context, _ resource.SchemaRequest,
 			"routable_ip": schema.BoolAttribute{
 				Required: true,
 			},
+			"extra_disk_space": schema.Int64Attribute{
+				Optional:    true,
+				Description: "Size of extra_disk_space storage in GB to mount at /mydata. 0 means no extra_disk_space is mounted.",
+			},
+			"node_count": schema.Int64Attribute{
+				Optional:    true,
+				Description: "Number of nodes to create (1-10)",
+			},
 			"vlans": schema.ListNestedAttribute{
 				Optional: true,
 				NestedObject: schema.NestedAttributeObject{
@@ -85,28 +90,22 @@ func (r *cloudlabvmResource) Schema(_ context.Context, _ resource.SchemaRequest,
 }
 
 func (r *cloudlabvmResource) Configure(ctx context.Context, req resource.ConfigureRequest, resp *resource.ConfigureResponse) {
-	// Prevent panic if the provider has not been configured.
 	if req.ProviderData == nil {
 		return
 	}
-
 	client, ok := req.ProviderData.(Client)
-
 	if !ok {
 		resp.Diagnostics.AddError(
 			"Unexpected Resource Configure Type",
-			fmt.Sprintf("Expected *provider.Client, got: %T. Please report this issue to the provider developers.", req.ProviderData),
+			fmt.Sprintf("Expected *provider.Client, got: %T.", req.ProviderData),
 		)
-
 		return
 	}
-
 	r.client = client
 }
 
-// Create creates the resource and sets the initial Terraform state.
 func (r *cloudlabvmResource) Create(ctx context.Context, req resource.CreateRequest, resp *resource.CreateResponse) {
-	// Retrieve values from plan
+	// Retrieve values from plan.
 	var plan cloudlabvmModel
 	diags := req.Plan.Get(ctx, &plan)
 	resp.Diagnostics.Append(diags...)
@@ -114,43 +113,72 @@ func (r *cloudlabvmResource) Create(ctx context.Context, req resource.CreateRequ
 		return
 	}
 
+	// Log the raw strings for debugging
+	tflog.Info(ctx, "[Create] plan.Image="+plan.Image.ValueString())
+	tflog.Info(ctx, "[Create] plan.Aggregate="+plan.Aggregate.ValueString())
+	tflog.Info(ctx, "[Create] plan.Routable_ip="+fmt.Sprintf("%v", plan.Routable_ip.ValueBool()))
+
+	// Compute the full experiment name from plan.Name + workspace
+	baseName := plan.Name.ValueString()
+	// workspace := r.client.workspace
+	// if workspace == "" {
+	//     workspace = "default"
+	// }
+	// computedName := fmt.Sprintf("%s-%s", baseName, workspace)
+
+	// Build a JSON list for any VLANs
 	sharedvlans := func() string {
 		var vlans []map[string]string
 		for _, vlan := range plan.Vlans {
 			vlans = append(vlans, map[string]string{
-				"name":        strings.Replace(vlan.Name.String(), "\"", "", -1),
-				"subnet_mask": strings.Replace(vlan.Subnet_mask.String(), "\"", "", -1),
+				"name":        strings.ReplaceAll(vlan.Name.ValueString(), "\"", ""),
+				"subnet_mask": strings.ReplaceAll(vlan.Subnet_mask.ValueString(), "\"", ""),
 			})
 		}
 		vlansJson, err := mapToJSON(vlans)
 		if err != nil {
 			resp.Diagnostics.AddError(
-				"Error converting to json",
-				"Error converting to json: "+err.Error(),
+				"Error converting VLANs to json",
+				"Error: "+err.Error(),
 			)
 			return ""
 		}
 		return vlansJson
 	}()
 
-	tflog.Info(ctx, sharedvlans)
-
-	if resp.Diagnostics.HasError() {
-		return
-	}
-
+	// Prepare parameters to send to the client
 	params := map[string]string{
-		"name":        plan.Name.String(),
+		"name":        baseName,
 		"routable_ip": plan.Routable_ip.String(),
 	}
-	AddImageParam(&params, plan.Image.String())
-	AddAggregateParam(&params, plan.Aggregate.String())
+
+	// Add extra_disk_space storage if specified
+	if !plan.Extra_disk_space.IsNull() {
+		params["extra_disk_space"] = fmt.Sprintf("%d", plan.Extra_disk_space.ValueInt64())
+		tflog.Info(ctx, fmt.Sprintf("[Create] Adding extra_disk_space storage: %d GB", plan.Extra_disk_space.ValueInt64()))
+	}
+
+	// Handle node count
+	nodeCount := int64(1) // default to 1
+	if !plan.Node_count.IsNull() {
+		nodeCount = plan.Node_count.ValueInt64()
+	}
+	params["node_count"] = fmt.Sprintf("%d", nodeCount)
+	tflog.Info(ctx, fmt.Sprintf("[Create] Setting node count to: %d", nodeCount))
+
+	// Convert friendly "UBUNTU 20.04" -> "urn:publicid:IDN+emulab.net+image+..."
+	AddImageParam(ctx, &params, plan.Image.ValueString())
+	// Convert friendly "Any" -> ""
+	AddAggregateParam(ctx, &params, plan.Aggregate.ValueString())
+
 	if len(plan.Vlans) != 0 {
 		params["sharedVlans"] = sharedvlans
 	}
 
-	_, err := r.client.startExperiment(params)
+	// ADDED for debug: show final param map
+	tflog.Info(ctx, fmt.Sprintf("[Create] Final param map = %#v", params))
 
+	_, err := r.client.startExperiment(params)
 	if err != nil {
 		resp.Diagnostics.AddError(
 			"Error creating vm",
@@ -159,7 +187,8 @@ func (r *cloudlabvmResource) Create(ctx context.Context, req resource.CreateRequ
 		return
 	}
 
-	response, status, err := r.client.experimentStatus(plan.Name.String())
+	// Query status for the experiment
+	response, status, err := r.client.experimentStatus(baseName)
 	if err != nil {
 		resp.Diagnostics.AddError(
 			"Error reading vm status",
@@ -170,15 +199,15 @@ func (r *cloudlabvmResource) Create(ctx context.Context, req resource.CreateRequ
 	if status == EXPERIMENT_NOT_EXISTS {
 		resp.Diagnostics.AddError(
 			"Error reading vm status",
-			"vm status not exists, unexpected error: "+err.Error(),
+			"vm status not exists, unexpected error: experiment not found",
 		)
-
+		return
 	} else {
 		plan.Uuid = types.StringValue(response["UUID"])
-		tflog.Info(ctx, "Experiment exists with name: "+plan.Name.String())
+		tflog.Info(ctx, "[Create] Experiment exists with name: "+baseName)
 	}
 
-	// Set state to fully populated data
+	// Save state
 	diags = resp.State.Set(ctx, plan)
 	resp.Diagnostics.Append(diags...)
 	if resp.Diagnostics.HasError() {
@@ -186,7 +215,6 @@ func (r *cloudlabvmResource) Create(ctx context.Context, req resource.CreateRequ
 	}
 }
 
-// Read refreshes the Terraform state with the latest data.
 func (r *cloudlabvmResource) Read(ctx context.Context, req resource.ReadRequest, resp *resource.ReadResponse) {
 	var state cloudlabvmModel
 	diags := req.State.Get(ctx, &state)
@@ -194,7 +222,15 @@ func (r *cloudlabvmResource) Read(ctx context.Context, req resource.ReadRequest,
 	if resp.Diagnostics.HasError() {
 		return
 	}
-	response, status, err := r.client.experimentStatus(state.Name.String())
+
+	baseName := state.Name.ValueString()
+	// workspace := r.client.workspace
+	// if workspace == "" {
+	//     workspace = "default"
+	// }
+	// computedName := fmt.Sprintf("%s-%s", baseName, workspace)
+
+	response, status, err := r.client.experimentStatus(baseName)
 	if err != nil {
 		resp.Diagnostics.AddError(
 			"Error reading vm status",
@@ -203,39 +239,23 @@ func (r *cloudlabvmResource) Read(ctx context.Context, req resource.ReadRequest,
 		return
 	}
 	if status == EXPERIMENT_NOT_EXISTS {
+		// If it no longer exists, remove from state
 		resp.State.RemoveResource(ctx)
-		tflog.Info(ctx, "Experiment not exists")
-	} else {
-		state.Uuid = types.StringValue(response["UUID"])
-		tflog.Info(ctx, "Experiment exists with name: "+state.Name.String())
-		//Set state
-		diags = resp.State.Set(ctx, &state)
-	}
-
-	resp.Diagnostics.Append(diags...)
-	if resp.Diagnostics.HasError() {
+		tflog.Info(ctx, "[Read] Experiment not exists, removing from state.")
 		return
 	}
+
+	// Keep the same plan data
+	state.Uuid = types.StringValue(response["UUID"])
+	diags = resp.State.Set(ctx, &state)
+	resp.Diagnostics.Append(diags...)
 }
 
-// Update updates the resource and sets the updated Terraform state on success.
 func (r *cloudlabvmResource) Update(ctx context.Context, req resource.UpdateRequest, resp *resource.UpdateResponse) {
-	var plan cloudlabvmModel
-	diags := req.Plan.Get(ctx, &plan)
-	resp.Diagnostics.Append(diags...)
-	if resp.Diagnostics.HasError() {
-		return
-	}
-	resp.Diagnostics.AddError(
-		"Error Updating VM",
-		"Could not update vm, error: NOT IMPLEMENTED",
-	)
-	if resp.Diagnostics.HasError() {
-		return
-	}
+	// Not implemented
+	resp.Diagnostics.AddError("Update not implemented", "This resource does not support updates yet.")
 }
 
-// Delete deletes the resource and removes the Terraform state on success.
 func (r *cloudlabvmResource) Delete(ctx context.Context, req resource.DeleteRequest, resp *resource.DeleteResponse) {
 	var state cloudlabvmModel
 	diags := req.State.Get(ctx, &state)
@@ -244,8 +264,7 @@ func (r *cloudlabvmResource) Delete(ctx context.Context, req resource.DeleteRequ
 		return
 	}
 
-	// Delete existing order
-	_, err := r.client.terminateExperiment(state.Uuid.String())
+	_, err := r.client.terminateExperiment(state.Uuid.ValueString())
 	if err != nil {
 		resp.Diagnostics.AddError(
 			"Error Deleting VM",
@@ -253,4 +272,5 @@ func (r *cloudlabvmResource) Delete(ctx context.Context, req resource.DeleteRequ
 		)
 		return
 	}
+	tflog.Info(ctx, "[Delete] Experiment terminated.")
 }
