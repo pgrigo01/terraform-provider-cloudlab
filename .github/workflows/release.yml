@@ -1,6 +1,7 @@
 name: Release
 
 on:
+  # Trigger on any new tag that starts with "v" (e.g., v2.4.0).
   push:
     tags:
       - 'v*'
@@ -12,31 +13,36 @@ jobs:
   goreleaser:
     runs-on: ubuntu-latest
     steps:
+      # 1. Check out the repo
       - uses: actions/checkout@v3
         with:
+          # fetch-depth=0 so GoReleaser can read all tags/commits.
           fetch-depth: 0  
 
+      # 2. Set up Go
       - uses: actions/setup-go@v4
         with:
+          # This will look at your go.mod to pick the Go version, or you can hardcode e.g. "go-version: 1.20"
           go-version-file: 'go.mod'
           cache: true
 
-      - name: Clean Go Module Cache
-        run: |
-          rm -rf ~/.cache/go-build
-          rm -rf ~/go/pkg/mod
-
+      # 3. Import GPG private key
       - name: Import GPG private key
         run: |
-          echo "${{ secrets.GPG_PRIVATE_KEY }}" | gpg --batch --yes --import
-        env:
-          GPG_TTY: /dev/console
+          echo "${{ secrets.GPG_PRIVATE_KEY }}" | gpg --batch --import
+        # env:
+        #   GPG_TTY: $(tty)
 
+
+          
+      # 4. Run GoReleaser to build for multiple OS/arch and create a GitHub release
       - name: Run GoReleaser
         uses: goreleaser/goreleaser-action@v5
         with:
+          # --clean ensures the dist/ folder is fresh each time
           args: release --clean
         env:
+          # GitHub automatically sets this secret token
           GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
           GPG_FINGERPRINT: ${{ secrets.GPG_FINGERPRINT }}
           GPG_PASSPHRASE: ${{ secrets.GPG_PASSPHRASE }}
