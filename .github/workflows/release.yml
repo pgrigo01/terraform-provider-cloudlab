@@ -29,17 +29,13 @@ jobs:
       - name: Import GPG private key
         run: |
           echo "${{ secrets.GPG_PRIVATE_KEY }}" | gpg --batch --import
-          echo "Verifying imported keys:"
-          gpg --list-secret-keys --keyid-format LONG
-          
-          # Create a non-interactive trust script
-          echo -e "5\ny\n" | gpg --batch --no-tty --command-fd 0 --expert --edit-key ${{ secrets.GPG_FINGERPRINT }} trust
-          
-          # Alternative trust command if above fails
           echo "Setting key to ultimate trust level"
           echo "${{ secrets.GPG_FINGERPRINT }}:6:" | gpg --batch --import-ownertrust
         env:
-          GPG_TTY: /dev/null
+          TERM: dumb
+          COLUMNS: 160
+          LINES: 50
+          GPG_TTY: ''
 
       # 4. Run GoReleaser with modified signing options
       - name: Run GoReleaser
@@ -50,5 +46,7 @@ jobs:
           GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
           GPG_FINGERPRINT: ${{ secrets.GPG_FINGERPRINT }}
           GPG_PASSPHRASE: ${{ secrets.GPG_PASSPHRASE }}
-          # Tell GPG not to use TTY
-          GPG_TTY: /dev/null
+          TERM: dumb
+          COLUMNS: 160
+          LINES: 50
+          GPG_TTY: ''
