@@ -26,7 +26,14 @@ jobs:
           go-version-file: 'go.mod'
           cache: true
 
-      # 3. Run GoReleaser to build for multiple OS/arch and create a GitHub release
+      # 3. Import GPG private key
+      - name: Import GPG private key
+        run: |
+          echo "${{ secrets.GPG_PRIVATE_KEY }}" | gpg --batch --import
+        env:
+          GPG_TTY: $(tty)
+
+      # 4. Run GoReleaser to build for multiple OS/arch and create a GitHub release
       - name: Run GoReleaser
         uses: goreleaser/goreleaser-action@v5
         with:
@@ -36,3 +43,4 @@ jobs:
           # GitHub automatically sets this secret token
           GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
           GPG_FINGERPRINT: ${{ secrets.GPG_FINGERPRINT }}
+          GPG_PASSPHRASE: ${{ secrets.GPG_PASSPHRASE }}
