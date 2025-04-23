@@ -44,7 +44,7 @@ cloudlab-decrypted.pem.bak
 
 encryption_key.key
 
-.terraform.lock.hcl
+# .terraform.lock.hcl
 
 terraform-public-gpg.asc
 
