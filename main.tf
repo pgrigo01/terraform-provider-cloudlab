@@ -17,7 +17,7 @@ provider "cloudlab" {
 
 
 # resource "cloudlab_simple_experiment" "experiment1"{
-#     name = "experiment1"
+#     name = "exp3"
 #     routable_ip = true
 #     image        = "UBUNTU 22.04"
 #     aggregate    = "emulab.net"
@@ -53,9 +53,9 @@ provider "cloudlab" {
 #     aggregate    = "utah.cloudlab.us"
 # }
 
-resource "cloudlab_simple_experiment" "experiment6"{
-    name = "utahtest"
-    routable_ip = true
-    image        = "UBUNTU 24.04"
-    aggregate   = "utah.cloudlab.us"
-}
+# resource "cloudlab_simple_experiment" "experiment6"{
+#     name = "utahtest"
+#     routable_ip = true
+#     image        = "UBUNTU 24.04"
+#     aggregate   = "utah.cloudlab.us"
+# }
