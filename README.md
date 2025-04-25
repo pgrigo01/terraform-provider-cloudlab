@@ -15,24 +15,36 @@ The [CloudLab Provider](https://registry.terraform.io/providers/hashicorp/aws/la
 
 ## Usage Example
 ```
-provider "cloudlab" {
-  credentials_path = "./credentials-decrypted.pem"
-}
 
-resource "cloudlab_vlan" "my-cloudlab-vlan" {
-  name        = "vlan-name"
-  subnet_mask = "255.255.255.0"
-}
-
-resource "cloudlab_vm" "my-cloudlab-vm" {
-  name         = "vm-name"
-  project      = "project-name"
-  profile_uuid = "profile-uuid"
-  vlan = [
-    {
-      name        = resource.cloudlab_vlan.my-cloudlab-vlan.name
-      subnet_mask = resource.cloudlab_vlan.my-cloudlab-vlan.subnet_mask
+# CloudLab provider configuration, specifying the path to the credentials file and API endpoint
+terraform {
+  required_providers {
+    cloudlab = {
+      source  = "pgrigo01/cloudlab"
+      version = "1.0.0" 
     }
-  ]
+  }
 }
+
+provider "cloudlab" {
+  project          = "UCY-CS499-DC"
+  credentials_path = "cloudlab-decrypted.pem" 
+  browser= "chrome" 
+}
+
+
+# resource "cloudlab_simple_experiment" "experiment1"{
+#     name = "exp1"
+#     routable_ip = true
+#     image        = "UBUNTU 24.04"
+#     aggregate   = "utah.cloudlab.us"
+# }
+
+# resource "cloudlab_simple_experiment" "experiment2"{
+#     name = "exp1"
+#     routable_ip = true
+#     image        = "UBUNTU 24.04"
+#     aggregate   = "emulab.net"
+# }
+
 ```
