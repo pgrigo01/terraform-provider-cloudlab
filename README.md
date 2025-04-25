@@ -41,7 +41,7 @@ provider "cloudlab" {
 # }
 
 # resource "cloudlab_simple_experiment" "experiment2"{
-#     name = "exp1"
+#     name = "exp2"
 #     routable_ip = true
 #     image        = "UBUNTU 24.04"
 #     aggregate   = "emulab.net"
